@@ -1,0 +1,14 @@
+[package]
+name = "rustkali"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = "4.5.37"
+futures = "0.3.31"
+tokio = { version = "1.44.2", features = ["time", "rt", "rt-multi-thread", "macros", "sync"] }
+tokio-tungstenite = "0.26.2"
+tungstenite = "0.26.2"
+rand = "0.9.1"
+parking_lot = "0.12.3"
+hdrhistogram = "7.3.0"
