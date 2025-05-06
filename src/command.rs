@@ -8,6 +8,7 @@ pub struct Config {
     pub warmup_duration: Duration,
     pub message_size: usize,
     pub quiet: bool,
+    pub pipeline: bool,
     pub connections: u64,
     pub connect_rate: u64,
     pub connect_timeout: Duration,
@@ -27,6 +28,7 @@ pub fn parse_config(matches: &clap::ArgMatches) -> Config {
         duration: *matches.get_one::<Duration>("duration").unwrap(),
         warmup_duration: Duration::from_secs(5),
         quiet: matches.get_flag("quiet"),
+        pipeline: matches.get_flag("pipeline"),
         connections: *matches.get_one::<u64>("connections").unwrap(),
         connect_rate: *matches.get_one::<u64>("connect-rate").unwrap(),
         connect_timeout: *matches.get_one::<Duration>("connect-timeout").unwrap(),
@@ -109,6 +111,13 @@ pub fn new_command() -> clap::ArgMatches {
                 .default_value("8")
                 .value_parser(value_parser!(usize))
                 .help("Number of Tokio worker threads to use"),
+        )
+        .arg(
+            Arg::new("pipeline")
+                .short('p')
+                .long("pipeline")
+                .action(ArgAction::SetTrue)
+                .help("Use pipeline client to send messages"),
         )
         .arg(
             Arg::new("duration")

@@ -16,6 +16,173 @@ pub async fn websocket_worker(
     target: &str,
     config: Config,
     stats: Arc<Stats>,
+    shutdown: tokio::sync::broadcast::Receiver<()>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    if config.pipeline {
+        websocket_worker_pipeline(target, config, stats, shutdown).await
+    } else {
+        websocket_worker_echo(target, config, stats, shutdown).await
+    }
+}
+
+pub async fn websocket_worker_echo(
+    target: &str,
+    config: Config,
+    stats: Arc<Stats>,
+    mut shutdown: tokio::sync::broadcast::Receiver<()>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    stats.total_connections.fetch_add(1, Ordering::Relaxed);
+
+    // Connect to WebSocket server
+    let ws_stream = match time::timeout(config.connect_timeout, connect_async(target)).await {
+        Ok(Ok(ws)) => ws.0,
+        Ok(Err(e)) => {
+            if !stats.is_shutting_down() && !config.quiet {
+                eprintln!("Failed to connect to WebSocket {}: {}", target, e);
+            }
+            stats.record_connection_error();
+            return Ok(());
+        }
+        Err(_) => {
+            if !stats.is_shutting_down() && !config.quiet {
+                eprintln!("WebSocket connection timeout to {}", target);
+            }
+            stats.record_connection_error();
+            return Ok(());
+        }
+    };
+
+    let (mut write, mut read) = ws_stream.split();
+
+    // Handle first message if configured
+    if let Some(first_msg) = &config.first_message {
+        let start = Instant::now();
+        if let Err(e) = write.send(Message::Binary(first_msg.clone().into())).await {
+            if !stats.is_shutting_down() && !config.quiet {
+                eprintln!("Failed to send first WebSocket message: {}", e);
+            }
+            stats.record_connection_error();
+            return Ok(());
+        }
+
+        // Wait for first message response
+        match read.next().await {
+            Some(Ok(Message::Binary(data))) => {
+                let latency = start.elapsed().as_micros() as u64;
+                stats.record_latency(latency, 0);
+                stats.record_request(first_msg.len(), data.len());
+            }
+            Some(Err(e)) => {
+                if !stats.is_shutting_down() && !config.quiet {
+                    eprintln!("Failed to read first message response: {}", e);
+                }
+                stats.record_connection_error();
+                return Ok(());
+            }
+            _ => {
+                if !stats.is_shutting_down() && !config.quiet {
+                    eprintln!("Unexpected response to first message");
+                }
+                stats.record_connection_error();
+                return Ok(());
+            }
+        }
+    }
+
+    // Prepare payload for main benchmark
+    let payload = if let Some(msg) = &config.message {
+        msg.clone()
+    } else {
+        generate_payload(config.message_size)
+    };
+
+    let message = if let Some(latency_marker) = &config.latency_marker {
+        latency_marker.as_bytes().to_vec()
+    } else {
+        let message_size = if let Some(bw) = config.channel_bandwidth {
+            std::cmp::min(payload.len(), bw as usize / 8)
+        } else {
+            payload.len()
+        };
+        payload[..message_size].to_vec()
+    };
+
+    // Writer task
+    let start_time = Instant::now();
+    let mut counter = 0;
+
+    loop {
+        if let Some(lifetime) = config.channel_lifetime {
+            if start_time.elapsed() >= lifetime {
+                break;
+            }
+        }
+
+        tokio::select! {
+                _ = async {
+                    if stats.is_shutting_down() {
+                        return;
+                    }
+
+                    // Record send time before actual write
+                    let send_time = Instant::now();
+
+                    // Perform write operation
+                    if let Err(e) = write.send(Message::Binary(message.clone().into())).await {
+                        if !stats.is_shutting_down() && !config.quiet {
+                            eprintln!("WebSocket send error: {}", e);
+                        }
+                        stats.record_connection_error();
+                        return;
+                    }
+
+                    counter += 1;
+
+                    if let Some(msg) = read.next().await {
+                        match msg {
+                            Ok(Message::Binary(data)) => {
+                                let latency = send_time.elapsed().as_micros() as u64;
+                                stats.record_latency(latency, counter);
+                                stats.record_request(config.message_size, data.len());
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                if !stats.is_shutting_down() && !config.quiet {
+                                    eprintln!("WebSocket receive error: {}", e);
+                                }
+                                stats.record_connection_error();
+                                return;
+                            }
+                        }
+                    }
+
+                    if counter % 100 == 0 {
+                        tokio::task::yield_now().await;
+                    }
+
+                    if let Some(rate) = config.message_rate {
+                        let target_duration = Duration::from_secs_f64(1.0 / rate as f64);
+                        let elapsed = send_time.elapsed();
+                        if elapsed < target_duration {
+                            time::sleep(target_duration - elapsed).await;
+                        }
+                    }
+
+            } => {},
+            _ = shutdown.recv() => break,
+        }
+    }
+    // Clean up reader task
+    let _ = write.send(Message::Close(None)).await;
+    drop(write);
+    stats.success_connections.fetch_add(1, Ordering::Relaxed);
+    Ok(())
+}
+
+pub async fn websocket_worker_pipeline(
+    target: &str,
+    config: Config,
+    stats: Arc<Stats>,
     mut shutdown: tokio::sync::broadcast::Receiver<()>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     stats.total_connections.fetch_add(1, Ordering::Relaxed);
