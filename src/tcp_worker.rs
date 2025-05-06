@@ -2,10 +2,10 @@ use crate::command::Config;
 use crate::stats::Stats;
 use crate::utils::generate_payload;
 
-use std::collections::VecDeque;
+use crossbeam_queue::SegQueue;
 use std::error::Error;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -39,7 +39,7 @@ pub async fn tcp_worker(
     };
 
     let (mut reader, mut writer) = stream.into_split();
-    let sent_times = Arc::new(Mutex::new(VecDeque::<Instant>::with_capacity(1024)));
+    let sent_times = Arc::new(SegQueue::<Instant>::new());
 
     // Handle first message if configured
     if let Some(first_msg) = &config.first_message {
@@ -70,18 +70,38 @@ pub async fn tcp_worker(
         }
     }
 
+    // Prepare payload for main benchmark
+    let payload = if let Some(msg) = &config.message {
+        msg.clone()
+    } else {
+        generate_payload(config.message_size)
+    };
+
+    let message = if let Some(latency_marker) = &config.latency_marker {
+        latency_marker.as_bytes().to_vec()
+    } else {
+        let message_size = if let Some(bw) = config.channel_bandwidth {
+            std::cmp::min(payload.len(), bw as usize / 8)
+        } else {
+            payload.len()
+        };
+        payload[..message_size].to_vec()
+    };
+
+    let message_size = message.len();
+
     // Spawn reader task for full-duplex operation
     let reader_stats = stats.clone();
     let reader_config = config.clone();
     let reader_sent_times = sent_times.clone();
     let reader_handle = tokio::spawn(async move {
-        let mut buf = vec![0u8; reader_config.message_size];
-        let expected_len = reader_config.message_size;
+        let mut buf = vec![0u8; message_size];
+        let expected_len = message_size;
 
         loop {
             match reader.read_exact(&mut buf[..expected_len]).await {
                 Ok(n) if n == expected_len => {
-                    if let Some(sent_time) = reader_sent_times.lock().unwrap().pop_front() {
+                    if let Some(sent_time) = reader_sent_times.pop() {
                         let latency = sent_time.elapsed().as_micros() as u64;
                         reader_stats.record_latency(latency);
                         reader_stats.record_request(expected_len, expected_len);
@@ -98,13 +118,6 @@ pub async fn tcp_worker(
             }
         }
     });
-
-    // Prepare payload for main benchmark
-    let payload = if let Some(msg) = &config.message {
-        msg.clone()
-    } else {
-        generate_payload(config.message_size)
-    };
 
     // Writer task
     let start_time = Instant::now();
@@ -123,21 +136,9 @@ pub async fn tcp_worker(
                     return;
                 }
 
-                let message_size = if let Some(bw) = config.channel_bandwidth {
-                    std::cmp::min(payload.len(), bw as usize / 8)
-                } else {
-                    payload.len()
-                };
-
-                let message = if let Some(latency_marker) = &config.latency_marker {
-                    latency_marker.as_bytes().to_vec()
-                } else {
-                    payload[..message_size].to_vec()
-                };
-
                 // Record send time before actual write
                 let send_time = Instant::now();
-                sent_times.lock().unwrap().push_back(send_time);
+                sent_times.push(send_time);
 
                 // Perform write operation immediately
                 if let Err(e) = writer.write_all(&message).await {

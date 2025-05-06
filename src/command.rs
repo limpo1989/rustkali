@@ -25,7 +25,7 @@ pub fn parse_config(matches: &clap::ArgMatches) -> Config {
 
     let config = Config {
         duration: *matches.get_one::<Duration>("duration").unwrap(),
-        warmup_duration: Duration::from_secs(3),
+        warmup_duration: Duration::from_secs(5),
         quiet: matches.get_flag("quiet"),
         connections: *matches.get_one::<u64>("connections").unwrap(),
         connect_rate: *matches.get_one::<u64>("connect-rate").unwrap(),
@@ -106,7 +106,7 @@ pub fn new_command() -> clap::ArgMatches {
                 .short('w')
                 .long("workers")
                 .value_name("N")
-                .default_value("24")
+                .default_value("8")
                 .value_parser(value_parser!(usize))
                 .help("Number of Tokio worker threads to use"),
         )
@@ -115,7 +115,7 @@ pub fn new_command() -> clap::ArgMatches {
                 .short('T')
                 .long("duration")
                 .value_name("T")
-                .default_value("10s")
+                .default_value("15s")
                 .value_parser(parse_duration)
                 .help("Load test for the specified amount of time"),
         )

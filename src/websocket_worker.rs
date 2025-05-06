@@ -1,12 +1,12 @@
 use crate::command::Config;
 use crate::stats::Stats;
 use crate::utils::generate_payload;
-use std::collections::VecDeque;
 
+use crossbeam_queue::SegQueue;
 use futures::{SinkExt, StreamExt};
 use std::error::Error;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::time;
 use tokio_tungstenite::connect_async;
@@ -40,7 +40,7 @@ pub async fn websocket_worker(
     };
 
     let (mut write, mut read) = ws_stream.split();
-    let sent_times = Arc::new(Mutex::new(VecDeque::<Instant>::with_capacity(1024)));
+    let sent_times = Arc::new(SegQueue::<Instant>::new());
 
     // Handle first message if configured
     if let Some(first_msg) = &config.first_message {
@@ -81,11 +81,12 @@ pub async fn websocket_worker(
     let reader_stats = stats.clone();
     let reader_config = config.clone();
     let reader_sent_times = sent_times.clone();
+
     let reader_handle = tokio::spawn(async move {
         while let Some(msg) = read.next().await {
             match msg {
                 Ok(Message::Binary(data)) => {
-                    if let Some(sent_time) = reader_sent_times.lock().unwrap().pop_front() {
+                    if let Some(sent_time) = reader_sent_times.pop() {
                         let latency = sent_time.elapsed().as_micros() as u64;
                         reader_stats.record_latency(latency);
                         reader_stats.record_request(reader_config.message_size, data.len());
@@ -110,6 +111,17 @@ pub async fn websocket_worker(
         generate_payload(config.message_size)
     };
 
+    let message = if let Some(latency_marker) = &config.latency_marker {
+        latency_marker.as_bytes().to_vec()
+    } else {
+        let message_size = if let Some(bw) = config.channel_bandwidth {
+            std::cmp::min(payload.len(), bw as usize / 8)
+        } else {
+            payload.len()
+        };
+        payload[..message_size].to_vec()
+    };
+
     // Writer task
     let start_time = Instant::now();
     let mut counter = 0;
@@ -127,18 +139,12 @@ pub async fn websocket_worker(
                     return;
                 }
 
-                let message = if let Some(latency_marker) = &config.latency_marker {
-                    latency_marker.as_bytes().to_vec()
-                } else {
-                    payload.clone()
-                };
-
                 // Record send time before actual write
                 let send_time = Instant::now();
-                sent_times.lock().unwrap().push_back(send_time);
+                sent_times.push(send_time);
 
                 // Perform write operation
-                if let Err(e) = write.send(Message::Binary(message.into())).await {
+                if let Err(e) = write.send(Message::Binary(message.clone().into())).await {
                     if !stats.is_shutting_down() && !config.quiet {
                         eprintln!("WebSocket send error: {}", e);
                     }
@@ -164,6 +170,7 @@ pub async fn websocket_worker(
     }
 
     // Clean up reader task
+    let _ = write.send(Message::Close(None)).await;
     drop(write);
     let _ = reader_handle.await;
 
