@@ -48,7 +48,7 @@ pub fn parse_config(matches: &clap::ArgMatches) -> Config {
 }
 
 pub fn new_command() -> clap::ArgMatches {
-    let matches = Command::new("rustkali")
+    let matches = Command::new("tcpkali2")
         .version("0.1.0")
         .about("A load testing tool for WebSocket and TCP servers")
         .arg(
