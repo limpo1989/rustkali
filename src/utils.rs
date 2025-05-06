@@ -1,6 +1,6 @@
 use rand::Rng;
 use rand::distr::Alphanumeric;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub fn parse_duration(s: &str) -> Result<Duration, String> {
     if s.len() < 2 {
@@ -150,4 +150,12 @@ pub fn get_file_arg(matches: &clap::ArgMatches, arg_name: &str, unescape: bool) 
 
 pub fn generate_payload(size: usize) -> Vec<u8> {
     rand::rng().sample_iter(&Alphanumeric).take(size).collect()
+}
+
+pub fn unix_timestamp_millis() -> u64 {
+    let now = SystemTime::now();
+    let timestamp = now.duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis() as u64;
+    return timestamp;
 }

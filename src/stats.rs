@@ -1,6 +1,6 @@
+use crate::utils::unix_timestamp_millis;
 use hdrhistogram::Histogram;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::Instant;
 
 pub struct Stats {
     pub total_connections: AtomicU64,
@@ -11,8 +11,8 @@ pub struct Stats {
     pub latency_histogram: parking_lot::Mutex<Histogram<u64>>,
     pub is_warmup: AtomicBool,
     pub is_shutting_down: AtomicBool,
-    pub last_print_time: parking_lot::Mutex<Instant>,
-    pub last_print_count: parking_lot::Mutex<u64>,
+    pub last_print_time: AtomicU64,
+    pub last_print_count: AtomicU64,
     pub connection_errors: AtomicU64,
 }
 
@@ -30,14 +30,14 @@ impl Stats {
             latency_histogram: parking_lot::Mutex::new(hist),
             is_warmup: AtomicBool::new(true),
             is_shutting_down: AtomicBool::new(false),
-            last_print_time: parking_lot::Mutex::new(Instant::now()),
-            last_print_count: parking_lot::Mutex::new(0),
+            last_print_time: AtomicU64::new(unix_timestamp_millis()),
+            last_print_count: AtomicU64::new(0),
             connection_errors: AtomicU64::new(0),
         }
     }
 
-    pub fn record_latency(&self, latency_us: u64, sample_count :usize) {
-        if  sample_count % 100 == 0 && !self.is_warmup() {
+    pub fn record_latency(&self, latency_us: u64, sample_count: usize) {
+        if sample_count % 100 == 0 && !self.is_warmup() {
             let mut hist = self.latency_histogram.lock();
             hist.record(latency_us).unwrap_or_else(|e| {
                 if !self.is_shutting_down() {
@@ -67,8 +67,9 @@ impl Stats {
         self.total_bytes_sent.store(0, Ordering::Relaxed);
         self.total_bytes_received.store(0, Ordering::Relaxed);
         self.latency_histogram.lock().reset();
-        *self.last_print_time.lock() = Instant::now();
-        *self.last_print_count.lock() = 0;
+        self.last_print_count.store(0, Ordering::Relaxed);
+        self.last_print_time
+            .store(unix_timestamp_millis(), Ordering::Relaxed);
     }
 
     pub fn is_warmup(&self) -> bool {
@@ -84,16 +85,13 @@ impl Stats {
     }
 
     pub fn get_qps(&self) -> f64 {
-        let now = Instant::now();
-        let mut last_time = self.last_print_time.lock();
-        let mut last_count = self.last_print_count.lock();
-
-        let elapsed = now.duration_since(*last_time).as_secs_f64();
+        let now = unix_timestamp_millis();
         let current_count = self.total_requests.load(Ordering::Relaxed);
-        let qps = (current_count - *last_count) as f64 / elapsed;
+        let last_time = self.last_print_time.swap(now, Ordering::Relaxed);
+        let last_count = self.last_print_count.swap(current_count, Ordering::Relaxed);
 
-        *last_time = now;
-        *last_count = current_count;
+        let elapsed = (now - last_time) as f64 / 1000.0;
+        let qps = (current_count - last_count) as f64 / elapsed;
 
         qps
     }

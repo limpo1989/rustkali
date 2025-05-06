@@ -164,8 +164,8 @@ fn print_final_stats(stats: &Stats, duration: Duration, show_output: bool) {
     );
     println!(
         "Traffic:           {:.2}↓, {:.2}↑ Mbps",
-        total_bytes_received / 1000000,
-        total_bytes_sent / 1000000
+        total_bytes_received * 8 / 1000000,
+        total_bytes_sent * 8 / 1000000
     );
     println!("Latency Distribution (us):");
     println!("  Avg: {:8.1}  Min: {:8}", hist.mean(), hist.min());
