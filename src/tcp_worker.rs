@@ -57,7 +57,7 @@ pub async fn tcp_worker(
         match reader.read_exact(&mut response_buf).await {
             Ok(_) => {
                 let latency = start.elapsed().as_micros() as u64;
-                stats.record_latency(latency);
+                stats.record_latency(latency, 0);
                 stats.record_request(first_msg.len(), first_msg.len());
             }
             Err(e) => {
@@ -97,14 +97,16 @@ pub async fn tcp_worker(
     let reader_handle = tokio::spawn(async move {
         let mut buf = vec![0u8; message_size];
         let expected_len = message_size;
+        let mut counter: usize = 0;
 
         loop {
             match reader.read_exact(&mut buf[..expected_len]).await {
                 Ok(n) if n == expected_len => {
+                    counter += 1;
                     if let Some(sent_time) = reader_sent_times.pop() {
                         let latency = sent_time.elapsed().as_micros() as u64;
-                        reader_stats.record_latency(latency);
                         reader_stats.record_request(expected_len, expected_len);
+                        reader_stats.record_latency(latency, counter);
                     }
                 }
                 Ok(_) => break, // Unexpected EOF

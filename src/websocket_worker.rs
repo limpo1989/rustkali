@@ -57,7 +57,7 @@ pub async fn websocket_worker(
         match read.next().await {
             Some(Ok(Message::Binary(data))) => {
                 let latency = start.elapsed().as_micros() as u64;
-                stats.record_latency(latency);
+                stats.record_latency(latency, 0);
                 stats.record_request(first_msg.len(), data.len());
             }
             Some(Err(e)) => {
@@ -81,14 +81,16 @@ pub async fn websocket_worker(
     let reader_stats = stats.clone();
     let reader_config = config.clone();
     let reader_sent_times = sent_times.clone();
+    let mut counter: usize = 0;
 
     let reader_handle = tokio::spawn(async move {
         while let Some(msg) = read.next().await {
             match msg {
                 Ok(Message::Binary(data)) => {
+                    counter += 1;
                     if let Some(sent_time) = reader_sent_times.pop() {
                         let latency = sent_time.elapsed().as_micros() as u64;
-                        reader_stats.record_latency(latency);
+                        reader_stats.record_latency(latency, counter);
                         reader_stats.record_request(reader_config.message_size, data.len());
                     }
                 }

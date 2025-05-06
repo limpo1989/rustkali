@@ -14,7 +14,7 @@ use futures::stream::FuturesUnordered;
 use std::error::Error;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::time;
 
 fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -106,6 +106,8 @@ async fn async_main(matches: clap::ArgMatches) -> Result<(), Box<dyn Error + Sen
         );
     }
 
+    let start_time = Instant::now();
+
     // 等待压力测试完成
     time::sleep(config.duration).await;
     // 标记压测结束
@@ -122,7 +124,7 @@ async fn async_main(matches: clap::ArgMatches) -> Result<(), Box<dyn Error + Sen
     }
 
     // 输出统计结果
-    print_final_stats(&stats, config.duration, !config.quiet);
+    print_final_stats(&stats, start_time.elapsed(), !config.quiet);
     Ok(())
 }
 
@@ -132,28 +134,26 @@ fn print_final_stats(stats: &Stats, duration: Duration, show_output: bool) {
     }
 
     let hist = stats.latency_histogram.lock();
-    let total_bytes = stats.total_bytes_sent.load(Ordering::Relaxed)
-        + stats.total_bytes_received.load(Ordering::Relaxed);
+    let total_bytes_sent = stats.total_bytes_sent.load(Ordering::Relaxed);
+    let total_bytes_received = stats.total_bytes_received.load(Ordering::Relaxed);
+    let total_bytes = total_bytes_sent + total_bytes_received;
     let total_requests = stats.total_requests.load(Ordering::Relaxed);
     let qps = total_requests as f64 / duration.as_secs_f64();
+    let success_connections = stats.success_connections.load(Ordering::Relaxed) as f64;
+    let total_connections = stats.total_connections.load(Ordering::Relaxed) as f64;
     let error_rate = stats.connection_errors.load(Ordering::Relaxed) as f64
         / (stats.total_requests.load(Ordering::Relaxed) as f64 * 100.0);
 
     println!("\n=== Final Results ===");
     println!("Duration:          {:.2}s", duration.as_secs_f64());
-    println!(
-        "Total Connections: {}",
-        stats.total_connections.load(Ordering::Relaxed)
-    );
+    println!("Total Connections: {}", total_connections);
     println!(
         "Success Rate:      {:.1}%",
-        stats.success_connections.load(Ordering::Relaxed) as f64
-            / stats.total_connections.load(Ordering::Relaxed) as f64
-            * 100.0
+        success_connections / total_connections * 100.0
     );
     println!("Total Requests:    {}", total_requests);
     println!("Error Rate:        {:.2}%", error_rate);
-    println!("Requests Rate:     {:.2} req/s", qps);
+    println!("Requests Rate:     {:.2} req/s", qps,);
     println!(
         "Throughput:        {:.2} MB",
         total_bytes as f64 / 1_000_000.0
@@ -161,6 +161,11 @@ fn print_final_stats(stats: &Stats, duration: Duration, show_output: bool) {
     println!(
         "Bandwidth:         {:.2} MB/s",
         total_bytes as f64 / duration.as_secs_f64() / 1_000_000.0
+    );
+    println!(
+        "Traffic:           {:.2}↓, {:.2}↑ Mbps",
+        total_bytes_received / 1000000,
+        total_bytes_sent / 1000000
     );
     println!("Latency Distribution (us):");
     println!("  Avg: {:8.1}  Min: {:8}", hist.mean(), hist.min());

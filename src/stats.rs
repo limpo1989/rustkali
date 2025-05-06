@@ -36,8 +36,8 @@ impl Stats {
         }
     }
 
-    pub fn record_latency(&self, latency_us: u64) {
-        if !self.is_warmup() {
+    pub fn record_latency(&self, latency_us: u64, sample_count :usize) {
+        if  sample_count % 100 == 0 && !self.is_warmup() {
             let mut hist = self.latency_histogram.lock();
             hist.record(latency_us).unwrap_or_else(|e| {
                 if !self.is_shutting_down() {
