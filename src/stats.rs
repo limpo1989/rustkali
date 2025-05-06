@@ -1,6 +1,6 @@
+use hdrhistogram::Histogram;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Instant;
-use hdrhistogram::Histogram;
 
 pub struct Stats {
     pub total_connections: AtomicU64,
@@ -9,7 +9,7 @@ pub struct Stats {
     pub total_bytes_sent: AtomicU64,
     pub total_bytes_received: AtomicU64,
     pub latency_histogram: parking_lot::Mutex<Histogram<u64>>,
-    pub is_warmup: parking_lot::Mutex<bool>,
+    pub is_warmup: AtomicBool,
     pub is_shutting_down: AtomicBool,
     pub last_print_time: parking_lot::Mutex<Instant>,
     pub last_print_count: parking_lot::Mutex<u64>,
@@ -28,7 +28,7 @@ impl Stats {
             total_bytes_sent: AtomicU64::new(0),
             total_bytes_received: AtomicU64::new(0),
             latency_histogram: parking_lot::Mutex::new(hist),
-            is_warmup: parking_lot::Mutex::new(true),
+            is_warmup: AtomicBool::new(true),
             is_shutting_down: AtomicBool::new(false),
             last_print_time: parking_lot::Mutex::new(Instant::now()),
             last_print_count: parking_lot::Mutex::new(0),
@@ -37,7 +37,7 @@ impl Stats {
     }
 
     pub fn record_latency(&self, latency_us: u64) {
-        if !*self.is_warmup.lock() {
+        if !self.is_warmup() {
             let mut hist = self.latency_histogram.lock();
             hist.record(latency_us).unwrap_or_else(|e| {
                 if !self.is_shutting_down() {
@@ -48,7 +48,7 @@ impl Stats {
     }
 
     pub fn record_request(&self, bytes_sent: usize, bytes_received: usize) {
-        if !*self.is_warmup.lock() {
+        if !self.is_warmup() {
             self.total_requests.fetch_add(1, Ordering::Relaxed);
             self.total_bytes_sent
                 .fetch_add(bytes_sent as u64, Ordering::Relaxed);
@@ -62,13 +62,17 @@ impl Stats {
     }
 
     pub fn end_warmup(&self) {
-        *self.is_warmup.lock() = false;
+        self.is_warmup.store(false, Ordering::Relaxed);
         self.total_requests.store(0, Ordering::Relaxed);
         self.total_bytes_sent.store(0, Ordering::Relaxed);
         self.total_bytes_received.store(0, Ordering::Relaxed);
         self.latency_histogram.lock().reset();
         *self.last_print_time.lock() = Instant::now();
         *self.last_print_count.lock() = 0;
+    }
+
+    pub fn is_warmup(&self) -> bool {
+        self.is_warmup.load(Ordering::Relaxed)
     }
 
     pub fn set_shutting_down(&self) {

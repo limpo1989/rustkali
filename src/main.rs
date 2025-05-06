@@ -1,7 +1,7 @@
 mod command;
 mod stats;
-mod utils;
 mod tcp_worker;
+mod utils;
 mod websocket_worker;
 
 use crate::command::{new_command, parse_config};
@@ -38,11 +38,11 @@ async fn async_main(matches: clap::ArgMatches) -> Result<(), Box<dyn Error + Sen
         let stats_clone = stats.clone();
         let config_clone = config.clone();
         tokio::spawn(async move {
-            let mut interval = time::interval(Duration::from_millis(500));
+            let mut interval = time::interval(Duration::from_millis(1000));
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        if !*stats_clone.is_warmup.lock() && !config_clone.quiet {
+                        if !stats_clone.is_warmup() && !config_clone.quiet {
                             let qps = stats_clone.get_qps();
                             let current_count = stats_clone.total_requests.load(Ordering::Relaxed);
 
