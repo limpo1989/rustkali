@@ -50,6 +50,7 @@ Options:
       --connect-timeout <T>          Limit time spent in a connection attempt [default: 1s]
       --channel-lifetime <T>         Shut down each connection after T seconds
   -w, --workers <N>                  Number of Tokio worker threads to use [default: 8]
+      --nagle                        Control Nagle algorithm (set TCP_NODELAY)
   -p, --pipeline                     Use pipeline client to send messages
   -T, --duration <T>                 Load test for the specified amount of time [default: 15s]
   -e, --unescape-message-args        Unescape the following {-m|-f|--first-*} arguments
