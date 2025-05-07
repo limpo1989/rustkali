@@ -1,4 +1,4 @@
-use crate::utils::{get_file_arg, get_message_arg, parse_bandwidth, parse_duration, parse_rate};
+use crate::utils::{get_file_arg, get_message_arg, parse_duration, parse_rate};
 use clap::{Arg, ArgAction, Command, value_parser};
 use std::time::Duration;
 
@@ -13,11 +13,9 @@ pub struct Config {
     pub connect_rate: u64,
     pub connect_timeout: Duration,
     pub channel_lifetime: Option<Duration>,
-    pub channel_bandwidth: Option<u64>,
     pub first_message: Option<Vec<u8>>,
     pub message: Option<Vec<u8>>,
     pub message_rate: Option<u64>,
-    pub latency_marker: Option<String>,
     pub use_websocket: bool,
 }
 
@@ -33,14 +31,12 @@ pub fn parse_config(matches: &clap::ArgMatches) -> Config {
         connect_rate: *matches.get_one::<u64>("connect-rate").unwrap(),
         connect_timeout: *matches.get_one::<Duration>("connect-timeout").unwrap(),
         channel_lifetime: matches.get_one::<Duration>("channel-lifetime").cloned(),
-        channel_bandwidth: matches.get_one::<u64>("channel-bandwidth").cloned(),
         first_message: get_message_arg(&matches, "first-message", unescape)
             .or_else(|| get_file_arg(&matches, "first-message-file", unescape)),
         message: get_message_arg(&matches, "message", unescape)
             .or_else(|| get_file_arg(&matches, "message-file", unescape)),
         message_size: *matches.get_one::<usize>("message-size").unwrap(),
         message_rate: matches.get_one::<u64>("message-rate").cloned(),
-        latency_marker: matches.get_one::<String>("latency-marker").cloned(),
         use_websocket: matches.get_flag("websocket"),
     };
 
@@ -50,12 +46,12 @@ pub fn parse_config(matches: &clap::ArgMatches) -> Config {
 pub fn new_command() -> clap::ArgMatches {
     let matches = Command::new("tcpkali2")
         .version("0.1.0")
-        .about("A load testing tool for WebSocket and TCP servers")
+        .about("A load testing tool for WebSocket and TCP server")
         .arg(
             Arg::new("host:port")
                 .required(true)
-                .num_args(1..)
-                .help("Target server(s) in host:port format"),
+                .num_args(1)
+                .help("Target server in host:port format"),
         )
         .arg(
             Arg::new("websocket")
@@ -95,13 +91,6 @@ pub fn new_command() -> clap::ArgMatches {
                 .value_name("T")
                 .value_parser(parse_duration)
                 .help("Shut down each connection after T seconds"),
-        )
-        .arg(
-            Arg::new("channel-bandwidth")
-                .long("channel-bandwidth")
-                .value_name("Bw")
-                .value_parser(parse_bandwidth)
-                .help("Limit single connection bandwidth"),
         )
         .arg(
             Arg::new("workers")
@@ -176,12 +165,6 @@ pub fn new_command() -> clap::ArgMatches {
                 .value_name("R")
                 .value_parser(parse_rate)
                 .help("Messages per second to send in a connection"),
-        )
-        .arg(
-            Arg::new("latency-marker")
-                .long("latency-marker")
-                .value_name("string")
-                .help("Measure latency using a per-message marker"),
         )
         .arg(
             Arg::new("quiet")

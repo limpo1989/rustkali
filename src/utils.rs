@@ -43,6 +43,7 @@ pub fn parse_rate(s: &str) -> Result<u64, String> {
     }
 }
 
+#[allow(dead_code)]
 pub fn parse_bandwidth(s: &str) -> Result<u64, String> {
     if s.is_empty() {
         return Err("Empty bandwidth string".to_string());
@@ -154,7 +155,8 @@ pub fn generate_payload(size: usize) -> Vec<u8> {
 
 pub fn unix_timestamp_millis() -> u64 {
     let now = SystemTime::now();
-    let timestamp = now.duration_since(UNIX_EPOCH)
+    let timestamp = now
+        .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
         .as_millis() as u64;
     return timestamp;

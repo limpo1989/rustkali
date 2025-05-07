@@ -83,21 +83,10 @@ pub async fn tcp_worker_echo(
     }
 
     // Prepare payload for main benchmark
-    let payload = if let Some(msg) = &config.message {
-        msg.clone()
+    let message = if let Some(msg) = &config.message {
+        msg
     } else {
-        generate_payload(config.message_size)
-    };
-
-    let message = if let Some(latency_marker) = &config.latency_marker {
-        latency_marker.as_bytes().to_vec()
-    } else {
-        let message_size = if let Some(bw) = config.channel_bandwidth {
-            std::cmp::min(payload.len(), bw as usize / 8)
-        } else {
-            payload.len()
-        };
-        payload[..message_size].to_vec()
+        &generate_payload(config.message_size)
     };
 
     let message_size = message.len();
@@ -108,7 +97,6 @@ pub async fn tcp_worker_echo(
 
     let mut buf = vec![0u8; message_size];
     let expected_len = message_size;
-
     loop {
         if let Some(lifetime) = config.channel_lifetime {
             if start_time.elapsed() >= lifetime {
@@ -133,14 +121,14 @@ pub async fn tcp_worker_echo(
                     stats.record_connection_error();
                     return;
                 }
-                
+
                 counter += 1;
 
                 match reader.read_exact(&mut buf[..expected_len]).await {
                 Ok(n) if n == expected_len => {
-                        let latency = send_time.elapsed().as_micros() as u64;
-                        stats.record_request(expected_len, expected_len);
-                        stats.record_latency(latency, counter);
+                    let latency = send_time.elapsed().as_micros() as u64;
+                    stats.record_latency(latency, counter);
+                    stats.record_request(expected_len, expected_len);
                 }
                 Ok(_) => return, // Unexpected EOF
                 Err(e) => {
@@ -151,7 +139,7 @@ pub async fn tcp_worker_echo(
                     return;
                 }
             }
-                
+
             if counter % 100 == 0 {
                 tokio::task::yield_now().await;
             }
@@ -234,21 +222,10 @@ pub async fn tcp_worker_pipeline(
     }
 
     // Prepare payload for main benchmark
-    let payload = if let Some(msg) = &config.message {
+    let message = if let Some(msg) = &config.message {
         msg.clone()
     } else {
         generate_payload(config.message_size)
-    };
-
-    let message = if let Some(latency_marker) = &config.latency_marker {
-        latency_marker.as_bytes().to_vec()
-    } else {
-        let message_size = if let Some(bw) = config.channel_bandwidth {
-            std::cmp::min(payload.len(), bw as usize / 8)
-        } else {
-            payload.len()
-        };
-        payload[..message_size].to_vec()
     };
 
     let message_size = message.len();

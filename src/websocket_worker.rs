@@ -90,21 +90,10 @@ pub async fn websocket_worker_echo(
     }
 
     // Prepare payload for main benchmark
-    let payload = if let Some(msg) = &config.message {
-        msg.clone()
+    let message = if let Some(msg) = &config.message {
+        msg
     } else {
-        generate_payload(config.message_size)
-    };
-
-    let message = if let Some(latency_marker) = &config.latency_marker {
-        latency_marker.as_bytes().to_vec()
-    } else {
-        let message_size = if let Some(bw) = config.channel_bandwidth {
-            std::cmp::min(payload.len(), bw as usize / 8)
-        } else {
-            payload.len()
-        };
-        payload[..message_size].to_vec()
+        &generate_payload(config.message_size)
     };
 
     // Writer task
@@ -143,7 +132,7 @@ pub async fn websocket_worker_echo(
                             Ok(Message::Binary(data)) => {
                                 let latency = send_time.elapsed().as_micros() as u64;
                                 stats.record_latency(latency, counter);
-                                stats.record_request(config.message_size, data.len());
+                                stats.record_request(message.len(), data.len());
                             }
                             Ok(_) => {}
                             Err(e) => {
@@ -274,21 +263,10 @@ pub async fn websocket_worker_pipeline(
     });
 
     // Prepare payload for main benchmark
-    let payload = if let Some(msg) = &config.message {
+    let message = if let Some(msg) = &config.message {
         msg.clone()
     } else {
         generate_payload(config.message_size)
-    };
-
-    let message = if let Some(latency_marker) = &config.latency_marker {
-        latency_marker.as_bytes().to_vec()
-    } else {
-        let message_size = if let Some(bw) = config.channel_bandwidth {
-            std::cmp::min(payload.len(), bw as usize / 8)
-        } else {
-            payload.len()
-        };
-        payload[..message_size].to_vec()
     };
 
     // Writer task
