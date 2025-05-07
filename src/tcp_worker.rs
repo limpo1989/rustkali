@@ -51,6 +51,11 @@ pub async fn tcp_worker_echo(
         }
     };
 
+    // 是否启用Nagle algorithm
+    if config.nagle {
+        stream.set_nodelay(false)?;
+    }
+
     let (mut reader, mut writer) = stream.into_split();
 
     // Handle first message if configured
@@ -188,6 +193,11 @@ pub async fn tcp_worker_pipeline(
             return Ok(());
         }
     };
+
+    // 是否启用Nagle algorithm
+    if config.nagle {
+        stream.set_nodelay(false)?;
+    }
 
     let (mut reader, mut writer) = stream.into_split();
     let sent_times = Arc::new(SegQueue::<Instant>::new());

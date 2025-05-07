@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tokio::time;
-use tokio_tungstenite::connect_async;
+use tokio_tungstenite::connect_async_with_config;
 use tungstenite::Message;
 
 pub async fn websocket_worker(
@@ -34,7 +34,12 @@ pub async fn websocket_worker_echo(
     stats.total_connections.fetch_add(1, Ordering::Relaxed);
 
     // Connect to WebSocket server
-    let ws_stream = match time::timeout(config.connect_timeout, connect_async(target)).await {
+    let ws_stream = match time::timeout(
+        config.connect_timeout,
+        connect_async_with_config(target, None, !config.nagle),
+    )
+    .await
+    {
         Ok(Ok(ws)) => ws.0,
         Ok(Err(e)) => {
             if !stats.is_shutting_down() && !config.quiet {
@@ -177,7 +182,12 @@ pub async fn websocket_worker_pipeline(
     stats.total_connections.fetch_add(1, Ordering::Relaxed);
 
     // Connect to WebSocket server
-    let ws_stream = match time::timeout(config.connect_timeout, connect_async(target)).await {
+    let ws_stream = match time::timeout(
+        config.connect_timeout,
+        connect_async_with_config(target, None, !config.nagle),
+    )
+    .await
+    {
         Ok(Ok(ws)) => ws.0,
         Ok(Err(e)) => {
             if !stats.is_shutting_down() && !config.quiet {
