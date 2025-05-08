@@ -1,6 +1,5 @@
 use crate::command::Config;
 use crate::stats::Stats;
-use crate::utils::generate_payload;
 
 use crossbeam_queue::SegQueue;
 use futures::{SinkExt, StreamExt};
@@ -14,20 +13,20 @@ use tungstenite::Message;
 
 pub async fn websocket_worker(
     target: &str,
-    config: Config,
+    config: Arc<Config>,
     stats: Arc<Stats>,
     shutdown: tokio::sync::broadcast::Receiver<()>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     if config.pipeline {
         websocket_worker_pipeline(target, config, stats, shutdown).await
     } else {
-        websocket_worker_echo(target, config, stats, shutdown).await
+        websocket_worker_pingpong(target, config, stats, shutdown).await
     }
 }
 
-pub async fn websocket_worker_echo(
+pub async fn websocket_worker_pingpong(
     target: &str,
-    config: Config,
+    config: Arc<Config>,
     stats: Arc<Stats>,
     mut shutdown: tokio::sync::broadcast::Receiver<()>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -95,11 +94,7 @@ pub async fn websocket_worker_echo(
     }
 
     // Prepare payload for main benchmark
-    let message = if let Some(msg) = &config.message {
-        msg
-    } else {
-        &generate_payload(config.message_size)
-    };
+    let message = config.message.as_ref().unwrap();
 
     // Writer task
     let start_time = Instant::now();
@@ -175,7 +170,7 @@ pub async fn websocket_worker_echo(
 
 pub async fn websocket_worker_pipeline(
     target: &str,
-    config: Config,
+    config: Arc<Config>,
     stats: Arc<Stats>,
     mut shutdown: tokio::sync::broadcast::Receiver<()>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -273,11 +268,7 @@ pub async fn websocket_worker_pipeline(
     });
 
     // Prepare payload for main benchmark
-    let message = if let Some(msg) = &config.message {
-        msg.clone()
-    } else {
-        generate_payload(config.message_size)
-    };
+    let message = config.message.as_ref().unwrap();
 
     // Writer task
     let start_time = Instant::now();

@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use rand::Rng;
 use rand::distr::Alphanumeric;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -121,24 +122,24 @@ pub fn get_message_arg(
     matches: &clap::ArgMatches,
     arg_name: &str,
     unescape: bool,
-) -> Option<Vec<u8>> {
+) -> Option<Bytes> {
     matches.get_one::<String>(arg_name).map(|s| {
         if unescape {
-            unescape_string(s).into_bytes()
+            Bytes::from(unescape_string(s))
         } else {
-            s.as_bytes().to_vec()
+            Bytes::copy_from_slice(s.as_bytes())
         }
     })
 }
 
-pub fn get_file_arg(matches: &clap::ArgMatches, arg_name: &str, unescape: bool) -> Option<Vec<u8>> {
+pub fn get_file_arg(matches: &clap::ArgMatches, arg_name: &str, unescape: bool) -> Option<Bytes> {
     matches.get_one::<String>(arg_name).and_then(|filename| {
         match std::fs::read_to_string(filename) {
             Ok(content) => {
                 if unescape {
-                    Some(unescape_string(&content).into_bytes())
+                    Some(Bytes::from(unescape_string(&content)))
                 } else {
-                    Some(content.into_bytes())
+                    Some(Bytes::from(content))
                 }
             }
             Err(e) => {
@@ -149,8 +150,10 @@ pub fn get_file_arg(matches: &clap::ArgMatches, arg_name: &str, unescape: bool) 
     })
 }
 
-pub fn generate_payload(size: usize) -> Vec<u8> {
-    rand::rng().sample_iter(&Alphanumeric).take(size).collect()
+pub fn generate_payload(size: usize) -> Option<Bytes> {
+    Some(Bytes::from(
+        rand::rng().sample_iter(&Alphanumeric).take(size).collect::<Vec<u8>>(),
+    ))
 }
 
 pub fn unix_timestamp_millis() -> u64 {

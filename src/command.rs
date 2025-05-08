@@ -1,5 +1,7 @@
-use crate::utils::{get_file_arg, get_message_arg, parse_duration, parse_rate};
+use crate::utils::{generate_payload, get_file_arg, get_message_arg, parse_duration, parse_rate};
+use bytes::Bytes;
 use clap::{Arg, ArgAction, Command, value_parser};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -14,14 +16,16 @@ pub struct Config {
     pub connect_rate: u64,
     pub connect_timeout: Duration,
     pub channel_lifetime: Option<Duration>,
-    pub first_message: Option<Vec<u8>>,
-    pub message: Option<Vec<u8>>,
+    pub first_message: Option<Bytes>,
+    pub message: Option<Bytes>,
     pub message_rate: Option<u64>,
     pub use_websocket: bool,
 }
 
-pub fn parse_config(matches: &clap::ArgMatches) -> Config {
+pub fn parse_config(matches: &clap::ArgMatches) -> Arc<Config> {
     let unescape = matches.get_flag("unescape-message-args");
+
+    let message_size = *matches.get_one::<usize>("message-size").unwrap();
 
     let config = Config {
         duration: *matches.get_one::<Duration>("duration").unwrap(),
@@ -36,13 +40,14 @@ pub fn parse_config(matches: &clap::ArgMatches) -> Config {
         first_message: get_message_arg(&matches, "first-message", unescape)
             .or_else(|| get_file_arg(&matches, "first-message-file", unescape)),
         message: get_message_arg(&matches, "message", unescape)
-            .or_else(|| get_file_arg(&matches, "message-file", unescape)),
-        message_size: *matches.get_one::<usize>("message-size").unwrap(),
+            .or_else(|| get_file_arg(&matches, "message-file", unescape))
+            .or_else(|| generate_payload(message_size)),
+        message_size,
         message_rate: matches.get_one::<u64>("message-rate").cloned(),
         use_websocket: matches.get_flag("websocket"),
     };
 
-    return config;
+    Arc::new(config)
 }
 
 pub fn new_command() -> clap::ArgMatches {
