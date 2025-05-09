@@ -25,17 +25,17 @@ cargo install --git https://github.com/limpo1989/tcpkali2
 Basic TCP echo test.
 
 ```bash
-tcpkali2 -c 1000 -T 30s 127.0.0.1:8080
+tcpkali2 -c 1000 127.0.0.1:9527
 ```
 
 Basic Websocket echo test.
 
 ```bash
-tcpkali2 --websocket -c 500 -r 10k ws://127.0.0.1:8080
+tcpkali2 -c 1000 --ws ws://127.0.0.1:8000
 ```
 
 ```
-# tcpkali2 --help
+$ tcpkali2 --help
 A load testing tool for WebSocket and TCP server
 
 Usage: tcpkali2 [OPTIONS] <host:port>
@@ -64,6 +64,76 @@ Options:
   -h, --help                         Print help
   -V, --version                      Print version
 ```
+
+## Example
+
+Written your echo test server
+
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/urpc/uio"
+)
+
+func main() {
+	var events uio.Events
+	
+	events.OnData = func(c uio.Conn) error {
+		_, err := c.WriteTo(c)
+		return err
+	}
+
+	if err := events.Serve(":9527"); nil != err {
+		fmt.Println("server exited with error:", err)
+	}
+}
+```
+
+Run your benchmark
+
+````
+# run echo server
+$ go run main.go
+
+# start benchmark
+$ tcpkali2 -c 200 -p 127.0.0.1:9527
+Warming up for 5 seconds...
+Warmup completed. Starting benchmark for 15 seconds...
+[Live] QPS: inf | Req: 787 | Latency(us): P50=3153 P95=44159 P99=44159
+[Live] QPS: 1564783 | Req: 1567135 | Latency(us): P50=4435 P95=19087 P99=32255
+[Live] QPS: 1551506 | Req: 3124851 | Latency(us): P50=4639 P95=21087 P99=35263
+[Live] QPS: 1555870 | Req: 4674494 | Latency(us): P50=4687 P95=21791 P99=36031
+[Live] QPS: 1579619 | Req: 6250954 | Latency(us): P50=4627 P95=21343 P99=35775
+[Live] QPS: 1580863 | Req: 7842883 | Latency(us): P50=4651 P95=21487 P99=35583
+[Live] QPS: 1575235 | Req: 9410242 | Latency(us): P50=4659 P95=21967 P99=36639
+[Live] QPS: 1558136 | Req: 10963704 | Latency(us): P50=4671 P95=22015 P99=36479
+[Live] QPS: 1555887 | Req: 12527370 | Latency(us): P50=4679 P95=22143 P99=36767
+[Live] QPS: 1565435 | Req: 14091240 | Latency(us): P50=4667 P95=21871 P99=36383
+[Live] QPS: 1544243 | Req: 15641660 | Latency(us): P50=4663 P95=21807 P99=35935
+[Live] QPS: 1557999 | Req: 17193427 | Latency(us): P50=4671 P95=21791 P99=35903
+[Live] QPS: 1562958 | Req: 18757948 | Latency(us): P50=4691 P95=22015 P99=36287
+[Live] QPS: 1563452 | Req: 20318273 | Latency(us): P50=4687 P95=21967 P99=36383
+[Live] QPS: 1571461 | Req: 21891306 | Latency(us): P50=4719 P95=22143 P99=36671
+[Live] QPS: 1565013 | Req: 23468838 | Latency(us): P50=4719 P95=22143 P99=36543
+
+=== Final Results ===
+Duration:          15.01s
+Total Connections: 200
+Success Rate:      100.0%
+Total Requests:    23478241
+Error Rate:        0.00%
+Requests Rate:     1563978.19 req/s
+Throughput:        6010.43 MB
+Bandwidth:         400.38 MB/s
+Traffic:           24041↓, 24041↑ Mbps
+Latency Distribution (us):
+  Avg:   6687.3  Min:       53
+  P50:     4719  P90:    13287
+  P95:    22143  P99:    36543
+  Max:    97663
+````
 
 ## License
 
